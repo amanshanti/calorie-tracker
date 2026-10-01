@@ -1,0 +1,57 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Calorie Tracker</title>
+<style>
+:root{--bg:#f4f6fb;--card:#fff;--tx:#1b1f2a;--mu:#7a8194;--ac:#6c5ce7;--g:#00b894;--o:#ff9f43;--r:#ff6b6b;--bd:#e8ebf3}
+@media(prefers-color-scheme:dark){:root{--bg:#12141c;--card:#1c1f2b;--tx:#eef0f6;--mu:#8b92a7;--bd:#2a2e3d}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--tx);padding:16px;max-width:520px;margin:auto}
+.c{background:var(--card);border-radius:20px;padding:18px;margin-bottom:14px;box-shadow:0 2px 12px #0000000d}
+h1{font-size:20px;margin:0 0 12px}h3{margin:0 0 10px;font-size:15px}.mu{color:var(--mu);font-size:13px}
+button,input{font:inherit;border-radius:12px;border:1px solid var(--bd);padding:10px;background:var(--bg);color:var(--tx)}
+button{cursor:pointer;background:var(--ac);color:#fff;border:0;font-weight:600}button.s{background:var(--bg);color:var(--tx);border:1px solid var(--bd)}
+.row{display:flex;gap:8px;align-items:center}.row>*{flex:1;min-width:0}.it{border-bottom:1px solid var(--bd);padding:10px 0}
+.it input{padding:7px;width:100%}.g{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:6px}
+.ring{display:flex;align-items:center;gap:16px}.st{display:flex;justify-content:space-between;text-align:center}.st b{display:block;font-size:18px}
+</style></head><body>
+<div class="row" style="margin-bottom:12px"><h1 style="flex:3;margin:0">🥗 Calorie Tracker</h1><button class="s" style="flex:.5" onclick="mdl()">🧠</button><button class="s" style="flex:.5" onclick="cfg()">⚙️</button></div><input type="file" id="mf" hidden onchange="inst(this.files[0])"><div id="ms" class="mu" style="margin:-6px 0 8px"></div>
+<div class="c"><div class="ring"><svg id="ring" width="130" height="130" viewBox="0 0 130 130"></svg><div style="flex:1"><div class="mu">Left today</div><div id="left" style="font-size:30px;font-weight:700"></div><div class="mu" id="sub"></div></div></div>
+<div class="st" style="margin-top:14px"><div><b id="tp"></b><span class="mu">Protein g</span></div><div><b id="tf"></b><span class="mu">Fiber g</span></div><div><b id="tc"></b><span class="mu">Eaten kcal</span></div></div></div>
+<div class="c"><div class="row"><button onclick="ph.click()">📷 Add from photo</button><button class="s" onclick="draft=[{n:'',q:'',c:0,p:0,f:0}];rev()">✍️ Manual</button></div>
+<input type="file" id="ph" accept="image/*" hidden onchange="photo(this.files[0])"><div id="rv"></div></div>
+<div class="c"><h3>Today's meals</h3><div id="list"></div></div>
+<div class="c"><h3>Last 7 days</h3><svg id="ch" viewBox="0 0 300 140" width="100%"></svg><div class="st" style="margin-top:10px"><div><b id="w"></b><span class="mu">7-day avg</span></div><div><b id="m"></b><span class="mu">30-day avg</span></div></div></div>
+<script>
+const $=id=>document.getElementById(id),K='ct1';
+let S=JSON.parse(localStorage.getItem(K)||'{"cal":0,"key":"","log":{}}'),draft=[];
+const save=()=>localStorage.setItem(K,JSON.stringify(S)),dk=d=>{d=new Date(d);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const day=k=>S.log[k]||[],tot=(k,f='c')=>day(k).reduce((a,x)=>a+(+x[f]||0),0),T=()=>dk(Date.now());
+function cfg(){let c=prompt('Maintenance calories per day:',S.cal||'');if(c!==null&&+c>0)S.cal=+c;let k=prompt('Gemini API key (free at aistudio.google.com/apikey), stored only on this device:',S.key||'');if(k!==null)S.key=k.trim();save();draw()}
+let llm;
+async function getLLM(){if(llm)return llm;
+let f;try{f=await(await(await navigator.storage.getDirectory()).getFileHandle('gemma.bin')).getFile()}catch(e){throw new Error('Model not installed. Tap 🧠 to install it.')}
+if(!navigator.gpu)throw new Error('WebGPU not available. Use Chrome over https.');
+const {FilesetResolver,LlmInference}=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai');
+const fs=await FilesetResolver.forGenAiTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai/wasm');
+llm=await LlmInference.createFromOptions(fs,{baseOptions:{modelAssetBuffer:f.stream().getReader()},maxTokens:2048,maxNumImages:1,topK:1,temperature:.2});return llm}
+function mdl(){const c=prompt('Engine:\n1 = Gemini (cloud)\n2 = Gemma on-device\n3 = Install / replace on-device model file',S.eng==2?'2':'1');if(c==='1'||c==='2'){S.eng=+c;save();if(c==='2'&&!S.inst)mf.click()}else if(c==='3')mf.click()}
+async function inst(f){if(!f)return;try{await navigator.storage.persist();const h=await(await navigator.storage.getDirectory()).getFileHandle('gemma.bin',{create:true}),w=await h.createWritable(),r=f.stream().getReader();let n=0;for(;;){const{done,value}=await r.read();if(done)break;await w.write(value);n+=value.length;ms.textContent='Installing model… '+Math.round(n/f.size*100)+'%'}await w.close();S.inst=1;S.eng=2;save();llm=null;ms.textContent='✓ Model installed. On-device engine active.'}catch(e){ms.textContent='Install failed: '+e.message}mf.value=''}
+async function photo(f){if(!f)return;const dev=S.eng==2;if(!dev&&!S.key){alert('Add Gemini key in ⚙️, or choose on-device in 🧠');return}
+$('rv').innerHTML='<p class="mu">'+(dev?'Running Gemma on your phone (can take 20-60s)…':'Analysing photo…')+'</p>';
+try{const cv=await new Promise(r=>{const i=new Image();i.onload=()=>{const s=Math.min(1,(dev?768:1024)/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*s;c.height=i.height*s;c.getContext('2d').drawImage(i,0,0,c.width,c.height);r(c)};i.src=URL.createObjectURL(f)});
+const p='Identify every food item in this photo. Return ONLY a JSON array of objects: {"n":name,"q":estimated quantity with unit e.g. "2 rotis" or "150 g","c":kcal number,"p":protein grams number,"f":fiber grams number}. Be realistic.';let t;
+if(dev){const m=await getLLM();t=await m.generateResponse(['<start_of_turn>user\n',{imageSource:cv},p,'<end_of_turn>\n<start_of_turn>model\n'])}
+else{const b=cv.toDataURL('image/jpeg',.8).split(',')[1],r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+S.key,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:p},{inline_data:{mime_type:'image/jpeg',data:b}}]}],generationConfig:{responseMimeType:'application/json'}})}),j=await r.json();t=j.candidates[0].content.parts[0].text}
+draft=JSON.parse(t.match(/\[[\s\S]*\]/)[0]);rev()}catch(e){$('rv').innerHTML='<p style="color:var(--r)">Failed: '+e.message+'. Edit manually or retry.</p>'}ph.value=''}
+function rev(){$('rv').innerHTML='<p class="mu">Review & edit, then approve:</p>'+draft.map((x,i)=>`<div class="it"><div class="g"><input placeholder="Food" value="${x.n}" onchange="draft[${i}].n=this.value"><input placeholder="Qty" value="${x.q}" onchange="draft[${i}].q=this.value"><input type="number" placeholder="kcal" value="${x.c}" onchange="draft[${i}].c=+this.value"><input type="number" placeholder="P" value="${x.p}" onchange="draft[${i}].p=+this.value"><input type="number" placeholder="F" value="${x.f}" onchange="draft[${i}].f=+this.value"></div></div>`).join('')+'<div class="mu">Columns: food · qty · kcal · protein · fiber</div><div class="row" style="margin-top:10px"><button style="background:var(--g)" onclick="ok()">✓ Approve</button><button class="s" onclick="draft=[{n:\'\',q:\'\',c:0,p:0,f:0}].concat(draft);rev()">+ Item</button><button class="s" onclick="draft=[];rev()">Cancel</button></div>'}
+function ok(){const k=T();S.log[k]=day(k).concat(draft.filter(x=>x.n||x.c));draft=[];save();rev();draw()}
+function del(i){const k=T();S.log[k].splice(i,1);save();draw()}
+function avg(n){let s=0,c=0;for(let i=0;i<n;i++){const k=dk(Date.now()-i*864e5);if(day(k).length){s+=tot(k);c++}}return c?Math.round(s/c):0}
+function draw(){const k=T(),e=tot(k),g=S.cal||0,l=g-e,pct=g?Math.min(1,e/g):0,R=52,C=2*Math.PI*R;
+$('ring').innerHTML=`<circle cx="65" cy="65" r="${R}" fill="none" stroke="var(--bd)" stroke-width="12"/><circle cx="65" cy="65" r="${R}" fill="none" stroke="${l<0?'var(--r)':'var(--ac)'}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${C*pct} ${C}" transform="rotate(-90 65 65)"/><text x="65" y="70" text-anchor="middle" fill="var(--tx)" font-size="18" font-weight="700">${Math.round(pct*100)}%</text>`;
+$('left').textContent=g?(l>=0?l:'+'+(-l))+' kcal':'Set goal ⚙️';$('sub').textContent=g?(l<0?'over your maintenance':'of '+g+' kcal'):'';
+$('tp').textContent=Math.round(tot(k,'p'));$('tf').textContent=Math.round(tot(k,'f'));$('tc').textContent=e;
+$('list').innerHTML=day(k).map((x,i)=>`<div class="it row"><div style="flex:3"><b>${x.n}</b><div class="mu">${x.q} · P${x.p} F${x.f}</div></div><b style="text-align:right">${x.c}</b><button class="s" style="flex:0 0 36px;padding:6px" onclick="del(${i})">✕</button></div>`).join('')||'<p class="mu">Nothing logged yet.</p>';
+let b='',mx=Math.max(g,...[...Array(7)].map((_,i)=>tot(dk(Date.now()-i*864e5))),1)*1.1;
+for(let i=6;i>=0;i--){const d=new Date(Date.now()-i*864e5),v=tot(dk(d)),h=v/mx*100,x=(6-i)*42+12;b+=`<rect x="${x}" y="${110-h}" width="26" height="${h}" rx="6" fill="${v>g&&g?'var(--o)':'var(--ac)'}"/><text x="${x+13}" y="126" text-anchor="middle" font-size="9" fill="var(--mu)">${d.toLocaleDateString('en',{weekday:'short'})}</text>${v?`<text x="${x+13}" y="${106-h}" text-anchor="middle" font-size="8" fill="var(--tx)">${v}</text>`:''}`}
+if(g)b+=`<line x1="0" x2="300" y1="${110-g/mx*100}" y2="${110-g/mx*100}" stroke="var(--g)" stroke-dasharray="4"/>`;
+$('ch').innerHTML=b;$('w').textContent=avg(7)+' kcal';$('m').textContent=avg(30)+' kcal'}
+draw();if(!S.cal)setTimeout(cfg,300);
+</script></body></html>
